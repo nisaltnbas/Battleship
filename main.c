@@ -89,7 +89,6 @@ int all_ships_hitted(char area[SIZEofGRID][SIZEofGRID])
 }
 
 
-
 int main() {
     srand(time(NULL));
     int parent_ships[COUNTofSHIPS][2];
@@ -97,7 +96,6 @@ int main() {
     char parent_grid[SIZEofGRID][SIZEofGRID];
     char child_grid[SIZEofGRID][SIZEofGRID];
     struct shot_message shot;
-    int fd;
 
     // Create grids and ships for both parent and child
     playground(parent_grid, parent_ships);
@@ -121,76 +119,88 @@ int main() {
     }
 
     while (1) {
-    if (pid == 0) { // Child process
-        // Child attacks parent
-        shot.row = rand() % SIZEofGRID;
-        shot.column = rand() % SIZEofGRID;
-        printf("Child attacks Parent at (%d, %d)\n", shot.row, shot.column);
+        if (pid == 0) { // Child process
+            // Child attacks parent
+            shot.row = rand() % SIZEofGRID;
+            shot.column = rand() % SIZEofGRID;
+            printf("Child attacks Parent at (%d, %d)\n", shot.row, shot.column);
 
-        
+            // Open FIFO for writing
+            int fd = open(FIFO_FILE, O_WRONLY);
+            write(fd, &shot, sizeof(shot));
+            close(fd);
 
-        // Open FIFO for writing
-        fd = open(FIFO_FILE, O_WRONLY);
-        write(fd, &shot, sizeof(shot));
-        close(fd);
+            // Now, the child waits for the result from the parent
+            fd = open(FIFO_FILE, O_RDONLY);
+            read(fd, &shot, sizeof(shot));
+            close(fd);
 
-        // Now, the child waits for the result from the parent
-        fd = open(FIFO_FILE, O_RDONLY);
-        read(fd, &shot, sizeof(shot));
-        close(fd);
+            printf("Child receives outcome: %s\n", shot.outcome);
+        } else { // Parent process
+            // Parent reads the shot from the child via the pipe
+            int fd = open(FIFO_FILE, O_RDONLY);
+            read(fd, &shot, sizeof(shot));
+            close(fd);
 
-        printf("Child receives outcome: %s\n", shot.outcome);
-        
-    } else { // Parent process
-        // Parent reads the shot from the child via the pipe
-        fd = open(FIFO_FILE, O_RDONLY);
-        read(fd, &shot, sizeof(shot));
-        close(fd);
+            printf("Parent receives attack from Child at (%d, %d)\n", shot.row, shot.column);
 
-        printf("Parent receives attack from Child at (%d, %d)\n", shot.row, shot.column);
-       
+            
+            if (check_hit(shot.row, shot.column, parent_ships)) {
+                strcpy(shot.outcome, "Hit");
+                parent_grid[shot.row][shot.column] = 'X'; // Mark hit
+                printf("It's a HIT!\n");
+            } else {
+                strcpy(shot.outcome, "Miss");
+                printf("Missed!\n");
+            }
 
-        // Parent checks hit or miss
-        if (check_hit(shot.row, shot.column, parent_ships)) {
-            strcpy(shot.outcome, "Hit");
-            parent_grid[shot.row][shot.column] = 'X'; // Mark hit
-            printf("It's a HIT!\n");
-        } else {
-            strcpy(shot.outcome, "Miss");
-            printf("Missed!\n");
+          
+            printf("Updated Parent's Grid:\n");
+            print_playground(parent_grid);
+
+           
+            if (all_ships_hitted(parent_grid)) {
+                printf("Child wins. All ships of Parent have been destroyed.\n");
+                unlink(FIFO_FILE);
+                exit(0);
+            }
+
+           
+            shot.row = rand() % SIZEofGRID;
+            shot.column = rand() % SIZEofGRID;
+            printf("Parent attacks Child at (%d, %d)\n", shot.row, shot.column);
+
+            // Check hit or miss for the parent's attack
+            if (check_hit(shot.row, shot.column, child_ships)) {
+                strcpy(shot.outcome, "Hit");
+                child_grid[shot.row][shot.column] = 'X'; // Mark hit
+                printf("Parent HIT!\n");
+            } else {
+                strcpy(shot.outcome, "Miss");
+                printf("Parent Missed!\n");
+            }
+
+            
+            printf("Updated Child's Grid:\n");
+            print_playground(child_grid);
+
+            // Send outcome back to the child
+            fd = open(FIFO_FILE, O_WRONLY);
+            write(fd, &shot, sizeof(shot));
+            close(fd);
+              printf("Parent receives outcome: %s\n", shot.outcome);
+
+            
+            if (all_ships_hitted(child_grid)) {
+                printf("Parent wins. All ships of Child have been destroyed.\n");
+                unlink(FIFO_FILE);
+                exit(0);
+            }
         }
-
-        // Print updated parent grid
-        printf("Updated Parent's Grid:\n");
-        
-        print_playground(parent_grid);
-
-        // Now the parent sends the outcome back to the child
-        fd = open(FIFO_FILE, O_WRONLY);
-        write(fd, &shot, sizeof(shot));
-        close(fd);
     }
-
-    // Check for game end conditions
-    if (all_ships_hitted(parent_grid)) {
-        printf("Child wins. All ships of Parent have been destroyed.\n");
-        unlink(FIFO_FILE);
-        exit(0);
-    }
-    if (all_ships_hitted(child_grid)) {
-        printf("Parent wins. All ships of Child have been destroyed.\n");
-        unlink(FIFO_FILE);
-        exit(0);
-    }
-}
 
     // Clean up the FIFO
     unlink(FIFO_FILE);
-    exit(0);
-    
-
     return 0;
 }
-
-
 
