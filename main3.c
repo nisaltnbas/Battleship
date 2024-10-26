@@ -10,20 +10,21 @@
 #define SIZEofGRID 4
 #define COUNTofSHIPS 4
 #define FIFO_FILE "/tmp/battleship_fifo"
-//the chance to reuse the same points are the 1%
-#define PARENT_REUSE_CHANCE 100
+// the chance to reuse the same points are the 1%
+#define REUSE_P_POINTS 100
+#define REUSE_C_POINTS 100
 
 struct shot_message {
     int row;
     int column;
-    int outcome; // 1 for hit, 0 for miss
+    int hit_or_missed; // 1 for hit, 0 for miss
     int game_over; // New flag to indicate game over
 };
 
 void playground(char area[SIZEofGRID][SIZEofGRID], int ships[COUNTofSHIPS][2], char ship_char) {
     for (int i = 0; i < SIZEofGRID; i++) {
-        for (int k = 0; k < SIZEofGRID; k++) {
-            area[i][k] = '*';
+        for (int j = 0; j < SIZEofGRID; j++) {
+            area[i][j] = '*';
         }
     }
 
@@ -108,13 +109,21 @@ int main() {
 
     int last_player1_attack_row = -1;
     int last_player1_attack_column = -1;
+    int last_player2_attack_row = -1;
+    int last_player2_attack_column = -1;
 
     while (!shot.game_over) {
         if (pid == 0) { // Player 2 process
-            // Attack Player 1's grid
-            get_random_attack(&shot.row, &shot.column, player2_attacks);
-            player2_attacks[shot.row][shot.column] = 1;
-            printf("Player 2 attacks Player 1 at (%d, %d)\n", shot.row, shot.column);
+            // Decide whether to reuse last attack coordinates
+            if (rand() % REUSE_C_POINTS == 0 && last_player2_attack_row != -1) {
+                shot.row = last_player2_attack_row;
+                shot.column = last_player2_attack_column;
+                printf("Player 2 reuses last attack coordinates: (%d, %d)\n", shot.row, shot.column);
+            } else {
+                get_random_attack(&shot.row, &shot.column, player2_attacks);
+                player2_attacks[shot.row][shot.column] = 1;
+                printf("Player 2 attacks Player 1 at (%d, %d)\n", shot.row, shot.column);
+            }
 
             int fd = open(FIFO_FILE, O_WRONLY);
             write(fd, &shot, sizeof(shot));
@@ -123,6 +132,10 @@ int main() {
             fd = open(FIFO_FILE, O_RDONLY);
             read(fd, &shot, sizeof(shot));
             close(fd);
+
+            // Store last attack coordinates for Player 2
+            last_player2_attack_row = shot.row;
+            last_player2_attack_column = shot.column;
 
             if (shot.game_over) {
                 unlink(FIFO_FILE);
@@ -137,11 +150,11 @@ int main() {
 
             // Process Player 2's attack
             if (check_hit(shot.row, shot.column, player1_ships)) {
-                shot.outcome = 1;
+                shot.hit_or_missed = 1;
                 player1_grid[shot.row][shot.column] = 'X';
                 printf("It's a HIT!\n");
             } else {
-                shot.outcome = 0;
+                shot.hit_or_missed = 0;
                 printf("Player 2 Missed!\n");
             }
 
@@ -150,7 +163,7 @@ int main() {
 
             // Check if Player 2 wins
             if (all_ships_hitted(player1_grid)) {
-                printf("Player 2 wins. All ships of Player 1 have been destroyed.\n");
+                printf("Player 2 is winner!\n");
                 shot.game_over = 1;
                 fd = open(FIFO_FILE, O_WRONLY);
                 write(fd, &shot, sizeof(shot));
@@ -161,7 +174,7 @@ int main() {
             }
 
             // Player 1's turn to attack
-            if (rand() % PARENT_REUSE_CHANCE == 0 && last_player1_attack_row != -1) {
+            if (rand() % REUSE_P_POINTS == 0 && last_player1_attack_row != -1) {
                 shot.row = last_player1_attack_row;
                 shot.column = last_player1_attack_column;
                 printf("Player 1 reuses last attack coordinates: (%d, %d)\n", shot.row, shot.column);
@@ -173,11 +186,11 @@ int main() {
 
             // Process Player 1's attack
             if (check_hit(shot.row, shot.column, player2_ships)) {
-                shot.outcome = 1;
+                shot.hit_or_missed = 1;
                 player2_grid[shot.row][shot.column] = 'X';
                 printf("Player 1 HIT!\n");
             } else {
-                shot.outcome = 0;
+                shot.hit_or_missed = 0;
                 printf("Player 1 Missed!\n");
             }
 
@@ -186,7 +199,7 @@ int main() {
 
             // Check if Player 1 wins
             if (all_ships_hitted(player2_grid)) {
-                printf("Player 1 wins. All ships of Player 2 have been destroyed.\n");
+                printf("Player 1 is winner!\n");
                 shot.game_over = 1;
             }
 
@@ -195,7 +208,7 @@ int main() {
             write(fd, &shot, sizeof(shot));
             close(fd);
 
-            // Store last attack coordinates
+            // Store last attack coordinates for Player 1
             last_player1_attack_row = shot.row;
             last_player1_attack_column = shot.column;
 
@@ -206,7 +219,4 @@ int main() {
             }
         }
     }
-
-    unlink(FIFO_FILE);
-    return 0;
 }
