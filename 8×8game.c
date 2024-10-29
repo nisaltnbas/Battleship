@@ -105,7 +105,7 @@ int gap_rule_valid(char grid[SIZEofGRID][SIZEofGRID], int row, int col, int size
     }
     return 1;
 }
-// Places a ship on the grid
+// place a ship on the grid
 void place_ship(char grid[SIZEofGRID][SIZEofGRID], int row, int col, int size, int is_vertical, char ship_char) {
     for (int i = 0; i < size; i++) {
         int r = row + (is_vertical ? i : 0);
@@ -119,19 +119,24 @@ void place_all_ships(char grid[SIZEofGRID][SIZEofGRID], char ship_char) {
     int placed_ships = 0;
 
     while (placed_ships < SHIPS_NUMBER) {
+        //choose random ship's placing points
         int row = rand() % SIZEofGRID;
         int col = rand() % SIZEofGRID;
+        //randomly choose the direction: 1 - Vertical, 0 - Horizontal
         int is_vertical = rand() % 2;
         int size;
 
         if (placed_ships == 0) {
+             //placing first ship will be battleship
             size = BATTLESHIP_SIZE;
         } else if (placed_ships < 3) {
+            //secondly placed ships will be cruisers
             size = CRUISER_SIZE;
         } else {
+            //thirdly placed ships will destroyers
             size = DESTROYER_SIZE;
         }
-
+        //check gaps rule
         if (gap_rule_valid(grid, row, col, size, is_vertical)) {
             place_ship(grid, row, col, size, is_vertical, ship_char);
             placed_ships++;
@@ -139,6 +144,7 @@ void place_all_ships(char grid[SIZEofGRID][SIZEofGRID], char ship_char) {
     }
 }
 
+//check if all ships are hit
 int all_ships_hitted(char grid[SIZEofGRID][SIZEofGRID]) {
     for (int i = 0; i < SIZEofGRID; i++) {
         for (int j = 0; j < SIZEofGRID; j++) {
@@ -151,7 +157,7 @@ int all_ships_hitted(char grid[SIZEofGRID][SIZEofGRID]) {
 }
 
 void add_target_positions(AIStrategy *ai, int row, int col, int attacks[SIZEofGRID][SIZEofGRID]) {
-    // Define movement directions for adjacent cells: up, right, down, left
+    // find moving directions for around cells(up, right, down, left)
     int directions[4][2] = {{-1,0}, {0,1}, {1,0}, {0,-1}};
     
     // Loop through each direction to add surrounding cells as target positions
@@ -176,13 +182,13 @@ void add_target_positions(AIStrategy *ai, int row, int col, int attacks[SIZEofGR
 }
 
 void execute_smart_attack(int *row, int *col, int attacks[SIZEofGRID][SIZEofGRID], AIStrategy *ai) {
-    // If AI is in hunting mode and has targets available
+    // if AI is in hunting mode and has targets available
     if (ai->hunting_mode && ai->target_count > 0) {
         // Find the target with the highest priority
         int best_index = 0;
         int highest_priority = ai->targets[0].priority;
         
-        // Iterate through targets to select the one with the highest priority
+        // iterate through targets to select the one with the highest priority
         for (int i = 1; i < ai->target_count; i++) {
             if (ai->targets[i].priority > highest_priority) {
                 highest_priority = ai->targets[i].priority;
@@ -190,17 +196,17 @@ void execute_smart_attack(int *row, int *col, int attacks[SIZEofGRID][SIZEofGRID
             }
         }
         
-        // Assign selected target's coordinates for the attack
+        // assign selected target's coordinates for the attack
         *row = ai->targets[best_index].row;
         *col = ai->targets[best_index].col;
         
-        // Remove the used target from the target list by shifting remaining targets left
+        // remove the used target from the target list by shifting remaining targets left
         for (int i = best_index; i < ai->target_count - 1; i++) {
             ai->targets[i] = ai->targets[i + 1];
         }
         ai->target_count--; // Decrement target count after removal
     } else {
-        // If no targets, perform a random attack
+        // else if no targets, perform a random attack
         do {
             *row = rand() % SIZEofGRID;
             *col = rand() % SIZEofGRID;
@@ -208,6 +214,7 @@ void execute_smart_attack(int *row, int *col, int attacks[SIZEofGRID][SIZEofGRID
     }
 }
 
+//check if a shot hits a ship
 int check_hit(char grid[SIZEofGRID][SIZEofGRID], int row, int col) {
     return (grid[row][col] == 'P' || grid[row][col] == 'C');
 }
@@ -247,8 +254,8 @@ int main() {
     }
 
     while (!p1_shot.gameOver && !p2_shot.gameOver) {
-        if (pid == 0) {  // Player 2 process
-            // Player 2's shot
+        if (pid == 0) {  
+            // player 2 attack
             execute_smart_attack(&p2_shot.row, &p2_shot.column, player2_attacks, &player2_ai);
             player2_attacks[p2_shot.row][p2_shot.column] = 1;
             printf("Player 2 attacks Player 1 at (%d, %d)\n", p2_shot.row, p2_shot.column);
@@ -273,8 +280,8 @@ int main() {
                 exit(0);
             }
 
-        } else {  // Player 1 process
-            // Handle Player 2's shot
+        } else { 
+            // player1 handle player2's shot
             int fd = open(FIFO_FILE, O_RDONLY);
             read(fd, &p2_shot, sizeof(p2_shot));
             close(fd);
@@ -301,7 +308,7 @@ int main() {
                 exit(0);
             }
 
-            // Player 1's shot
+            // player1 attack
             execute_smart_attack(&p1_shot.row, &p1_shot.column, player1_attacks, &player1_ai);
             player1_attacks[p1_shot.row][p1_shot.column] = 1;
             printf("Player 1 attacks Player 2 at (%d, %d)\n", p1_shot.row, p1_shot.column);
